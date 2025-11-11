@@ -1,8 +1,4 @@
 {
-  "functions": {
-    "api/index.py": { "runtime": "python3.11" },
-    "api/predict.py": { "runtime": "python3.11" }
-  },
   "routes": [
     { "src": "^/$", "dest": "api/index.py" },
     { "src": "^/api/predict$", "dest": "api/predict.py" }

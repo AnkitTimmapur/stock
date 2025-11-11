@@ -3,4 +3,4 @@ pandas==2.2.0
 yfinance==0.2.32
 feedparser==6.0.10
 nltk==3.8.1
-scikit-learn==1.4.1
+scikit-learn==1.4.2

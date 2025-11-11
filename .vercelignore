@@ -1,0 +1,49 @@
+# Exclude unnecessary files from Vercel deployment
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.env
+.env.local
+.vercel/
+*.log
+.DS_Store
+data/
+src/
+web.py
+*.md
+.git/
+.gitignore
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Exclude test files if any
+test/
+tests/
+*_test.py
+*_tests.py
+
+# Exclude documentation
+docs/
+*.md
+README*
+
+# Exclude large data files
+*.csv
+*.xlsx
+*.xls
+
+# Exclude Jupyter notebooks
+*.ipynb
+.ipynb_checkpoints/
+

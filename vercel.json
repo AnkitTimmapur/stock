@@ -1,7 +1,21 @@
 {
+  "functions": {
+    "api/**/*.py": {
+      "maxDuration": 60
+    }
+  },
   "routes": [
     { "src": "^/$", "dest": "api/index.py" },
     { "src": "^/api/predict$", "dest": "api/predict.py" }
+  ],
+  "ignore": [
+    "venv/**",
+    "__pycache__/**",
+    "*.pyc",
+    "data/**",
+    "src/**",
+    "web.py",
+    "*.md"
   ]
 }
 

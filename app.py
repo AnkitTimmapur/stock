@@ -6,16 +6,15 @@ from datetime import datetime
 import feedparser
 import nltk
 from nltk.sentiment.vader import SentimentIntensityAnalyzer
-from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_squared_error, r2_score
 
-import matplotlib
-matplotlib.use("Agg")  # use non-GUI backend for server environment
-import matplotlib.pyplot as plt
-import io, base64
+# Optimize NLTK: only download if not present (reduces deployment size)
+try:
+    nltk.data.find('sentiment/vader_lexicon')
+except LookupError:
+    nltk.download('vader_lexicon', quiet=True)
 
-nltk.download('vader_lexicon')
 sia = SentimentIntensityAnalyzer()
 
 def predict_stock(user_input):
@@ -111,23 +110,7 @@ def predict_stock(user_input):
 
     pred_next = model.predict(df.iloc[-1:][features])[0]
 
-    # ----- GRAPH (historical + next point) -----
-    plt.figure(figsize=(8,4))
-    plt.plot(df['Date'], df['Close'])
-    plt.scatter(df['Date'].iloc[-1] + pd.Timedelta(days=1), pred_next)
-
-    plt.title(f"{TICKER} Price Trend + Prediction")
-    plt.xlabel("Date")
-    plt.ylabel("Close Price")
-
-    buf = io.BytesIO()
-    plt.savefig(buf, format="png", bbox_inches='tight')
-    buf.seek(0)
-    chart_base64 = base64.b64encode(buf.getvalue()).decode()
-    plt.close()
-    # ------------------
-
-    # -------- INTERACTIVE DATA ADDED (ONLY THIS PART ADDED) --------
+    # -------- CHART DATA FOR CLIENT-SIDE RENDERING (Plotly.js) --------
     hist_dates = df['Date'].astype(str).tolist()
     hist_close = df['Close'].astype(float).tolist()
     pred_point_date = (df['Date'].iloc[-1] + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
@@ -205,22 +188,7 @@ def predict_stock(user_input):
         comp_mape = None
         dir_accuracy = None
 
-    # Build comparison chart
-    plt.figure(figsize=(9,4))
-    if not comp_df.empty:
-        plt.plot(pd.to_datetime(comp_df['date']), comp_df['act'], label="Actual", color="tab:blue")
-        plt.plot(pd.to_datetime(comp_df['date']), comp_df['pred'], label="Predicted", color="tab:orange")
-        plt.title(f"{TICKER} Backtest: Oct 11 to Nov 09, 2025")
-        plt.xlabel("Date")
-        plt.ylabel("Close Price")
-        plt.legend()
-        buf2 = io.BytesIO()
-        plt.savefig(buf2, format="png", bbox_inches='tight')
-        buf2.seek(0)
-        comparison_chart_base64 = base64.b64encode(buf2.getvalue()).decode()
-        plt.close()
-    else:
-        comparison_chart_base64 = ""
+    # Comparison chart data is sent as JSON, rendered client-side with Plotly.js
     # ===== End Task 1/2/3 =====
 
     return {
@@ -230,9 +198,8 @@ def predict_stock(user_input):
         "predicted_next":float(pred_next),
         "accuracy":float(confidence),
         "rmse":float(rmse),
-        "chart":chart_base64,
 
-        # new fields for interactive chart:
+        # Chart data for client-side rendering (Plotly.js):
         "hist_dates": hist_dates,
         "hist_close": hist_close,
         "pred_date": pred_point_date,
@@ -246,8 +213,7 @@ def predict_stock(user_input):
         "backtest_dates": pred_series_dates,   # same target dates
         "backtest_actuals": actual_series_values,
 
-        # Task 3: comparison + metrics
-        "comparison_chart": comparison_chart_base64,
+        # Task 3: comparison + metrics (charts rendered client-side)
         "comparison_rmse": comp_rmse,
         "comparison_mape": comp_mape,
 

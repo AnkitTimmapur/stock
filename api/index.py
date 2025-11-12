@@ -1,5 +1,6 @@
 def handler(request):
-    html = """
+    try:
+        html = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -127,11 +128,46 @@ def handler(request):
   </script>
 </body>
 </html>
-    """
-    return {
-        "statusCode": 200,
-        "headers": {"Content-Type": "text/html; charset=utf-8"},
-        "body": html
-    }
+        """
+        return {
+            "statusCode": 200,
+            "headers": {"Content-Type": "text/html; charset=utf-8"},
+            "body": html
+        }
+    except Exception as e:
+        import traceback
+        error_msg = str(e)
+        traceback_str = traceback.format_exc()
+        print(f"Error in index handler: {error_msg}")
+        print(traceback_str)
+        
+        # Return a simple error page
+        error_html = f"""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Error - Stock Predictor</title>
+  <style>
+    body {{ background:#0e1a1a; color:#dff; font-family:Segoe UI; padding: 20px; }}
+    .error {{ background:#112222; border:1px solid #ff4444; padding: 20px; border-radius: 10px; max-width: 600px; margin: 50px auto; }}
+    h1 {{ color: #ff4444; }}
+  </style>
+</head>
+<body>
+  <div class="error">
+    <h1>Error Loading Page</h1>
+    <p>An error occurred while loading the page. Please try again later.</p>
+    <p><small>Error: {error_msg}</small></p>
+  </div>
+</body>
+</html>
+        """
+        return {
+            "statusCode": 500,
+            "headers": {"Content-Type": "text/html; charset=utf-8"},
+            "body": error_html
+        }
 
 

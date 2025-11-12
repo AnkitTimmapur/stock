@@ -4,18 +4,77 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 import feedparser
-import nltk
-from nltk.sentiment.vader import SentimentIntensityAnalyzer
-from sklearn.linear_model import LinearRegression
-from sklearn.metrics import mean_squared_error, r2_score
 
-# Optimize NLTK: only download if not present (reduces deployment size)
-try:
-    nltk.data.find('sentiment/vader_lexicon')
-except LookupError:
-    nltk.download('vader_lexicon', quiet=True)
+# Lightweight sentiment analyzer (replaces NLTK)
+def simple_sentiment(text):
+    """Simple rule-based sentiment analyzer - returns score between -1 and 1"""
+    if not text:
+        return 0.0
+    
+    text_lower = text.lower()
+    
+    # Positive words
+    positive_words = ['bullish', 'rise', 'up', 'gain', 'profit', 'growth', 'strong', 
+                     'buy', 'positive', 'surge', 'rally', 'boom', 'success', 'win',
+                     'beat', 'outperform', 'soar', 'jump', 'climb', 'advance']
+    
+    # Negative words
+    negative_words = ['bearish', 'fall', 'down', 'loss', 'decline', 'weak', 'sell',
+                     'negative', 'drop', 'crash', 'bust', 'fail', 'lose', 'miss',
+                     'underperform', 'plunge', 'slide', 'dip', 'retreat', 'worry']
+    
+    pos_count = sum(1 for word in positive_words if word in text_lower)
+    neg_count = sum(1 for word in negative_words if word in text_lower)
+    
+    # Normalize to -1 to 1 range
+    total = pos_count + neg_count
+    if total == 0:
+        return 0.0
+    return (pos_count - neg_count) / max(total, 1)
 
-sia = SentimentIntensityAnalyzer()
+# Simple linear regression using numpy (replaces scikit-learn)
+class SimpleLinearRegression:
+    def __init__(self):
+        self.coef_ = None
+        self.intercept_ = None
+    
+    def fit(self, X, y):
+        """Fit linear regression model using least squares"""
+        # Add intercept term
+        X_with_intercept = np.column_stack([np.ones(X.shape[0]), X])
+        
+        # Solve using numpy's least squares
+        try:
+            coefs, residuals, rank, s = np.linalg.lstsq(X_with_intercept, y, rcond=None)
+        except np.linalg.LinAlgError:
+            # Fallback to pseudo-inverse if lstsq fails
+            coefs = np.linalg.pinv(X_with_intercept) @ y
+        
+        # Handle case where coefs might be 1D or 2D
+        if coefs.ndim > 1:
+            coefs = coefs.flatten()
+        
+        self.intercept_ = float(coefs[0])
+        self.coef_ = coefs[1:].astype(float)
+        return self
+    
+    def predict(self, X):
+        """Make predictions"""
+        if self.coef_ is None:
+            raise ValueError("Model must be fitted before prediction")
+        return self.intercept_ + np.dot(X, self.coef_)
+
+def mean_squared_error(y_true, y_pred):
+    """Calculate MSE"""
+    return np.mean((y_true - y_pred) ** 2)
+
+def r2_score(y_true, y_pred):
+    """Calculate R² score"""
+    ss_res = np.sum((y_true - y_pred) ** 2)
+    ss_tot = np.sum((y_true - np.mean(y_true)) ** 2)
+    if ss_tot == 0:
+        return 0.0
+    return 1 - (ss_res / ss_tot)
 
 def predict_stock(user_input):
     if "." not in user_input:
@@ -57,7 +116,7 @@ def predict_stock(user_input):
             if hasattr(entry,"published_parsed") and entry.published_parsed:
                 dt = datetime(*entry.published_parsed[:6])
                 if start_date.date() <= dt.date() <= end_date.date():
-                    sentiment = sia.polarity_scores(entry.title)['compound']
+                    sentiment = simple_sentiment(entry.title)
                     news_list.append([dt.date(),sentiment])
 
     news_daily = pd.DataFrame(news_list, columns=['DateOnly','Sentiment'])
@@ -97,18 +156,18 @@ def predict_stock(user_input):
     X_test = X[~train_idx]
     y_test = y[~train_idx.values]
 
-    model = LinearRegression()
-    model.fit(X_train,y_train)
+    model = SimpleLinearRegression()
+    model.fit(X_train.values, y_train.values)
 
-    pred_test = model.predict(X_test)
-    mse = mean_squared_error(y_test,pred_test)
+    pred_test = model.predict(X_test.values)
+    mse = mean_squared_error(y_test.values, pred_test)
     rmse = mse**0.5
-    confidence = r2_score(y_test,pred_test)*100
+    confidence = r2_score(y_test.values, pred_test)*100
 
     curr = df.iloc[-1]['Close']
     latest_time = df.iloc[-1]['Date']
 
-    pred_next = model.predict(df.iloc[-1:][features])[0]
+    pred_next = model.predict(df.iloc[-1:][features].values)[0]
 
     # -------- CHART DATA FOR CLIENT-SIDE RENDERING (Plotly.js) --------
     hist_dates = df['Date'].astype(str).tolist()
@@ -134,7 +193,7 @@ def predict_stock(user_input):
         if not prev_day_mask.any():
             # If previous trading day not found, skip
             continue
-        prev_features = df.loc[prev_day_mask, features]
+        prev_features = df.loc[prev_day_mask, features].values
         pred_val = float(model.predict(prev_features)[0])
         pred_series_dates.append(target_date.strftime("%Y-%m-%d"))
         pred_series_values.append(pred_val)

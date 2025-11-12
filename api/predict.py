@@ -3,19 +3,67 @@ import sys
 import os
 
 # Add parent directory to path to import app
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from app import predict_stock
+try:
+    parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if parent_dir not in sys.path:
+        sys.path.insert(0, parent_dir)
+    
+    # Try to import predict_stock
+    try:
+        from app import predict_stock
+    except ImportError:
+        # Fallback: try importing using importlib
+        import importlib.util
+        app_path = os.path.join(parent_dir, "app.py")
+        if os.path.exists(app_path):
+            spec = importlib.util.spec_from_file_location("app", app_path)
+            if spec and spec.loader:
+                app_module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(app_module)
+                predict_stock = app_module.predict_stock
+            else:
+                raise ImportError("Could not load app module")
+        else:
+            raise ImportError(f"app.py not found at {app_path}")
+except Exception as e:
+    # If import fails completely, we'll handle it in the handler
+    print(f"Warning: Failed to import predict_stock: {e}")
+    predict_stock = None
 
 def handler(request):
     try:
-        # Handle Vercel request format - support both dict and object-style
-        if hasattr(request, 'method'):
-            method = request.method
-        elif isinstance(request, dict):
-            method = request.get('method', 'GET')
+        # Check if predict_stock is available
+        if predict_stock is None:
+            return {
+                "statusCode": 500,
+                "headers": {"Content-Type": "application/json"},
+                "body": json.dumps({"error": "Function not available: import failed"})
+            }
+        
+        # Vercel Python runtime passes request as a dict
+        # Handle both dict and object-style requests
+        if request is None:
+            return {
+                "statusCode": 400,
+                "headers": {"Content-Type": "application/json"},
+                "body": json.dumps({"error": "Invalid request"})
+            }
+        
+        # Get method
+        if isinstance(request, dict):
+            method = request.get('method', 'GET').upper()
+            body = request.get('body', '{}')
+            query = request.get('query', {})
         else:
             method = getattr(request, 'method', 'GET')
+            if hasattr(request, 'body'):
+                body = request.body
+            else:
+                body = '{}'
+            if hasattr(request, 'query'):
+                query = request.query
+            else:
+                query = {}
         
         method = str(method).upper()
         
@@ -29,55 +77,24 @@ def handler(request):
         symbol = None
         
         if method == "POST":
-            # Try to get JSON body
-            if hasattr(request, 'get_json'):
+            # Parse JSON body
+            if isinstance(body, str):
                 try:
-                    data = request.get_json() or {}
-                except:
+                    data = json.loads(body) if body else {}
+                except json.JSONDecodeError:
                     data = {}
-            elif hasattr(request, 'body'):
-                body = request.body
-                if isinstance(body, str):
-                    try:
-                        data = json.loads(body)
-                    except:
-                        data = {}
-                else:
-                    data = body or {}
-            elif isinstance(request, dict):
-                body = request.get('body', '{}')
-                if isinstance(body, str):
-                    try:
-                        data = json.loads(body)
-                    except:
-                        data = {}
-                else:
-                    data = body or {}
             else:
-                data = {}
+                data = body or {}
             
             symbol = data.get("stock") or data.get("symbol")
         else:
             # GET - check query string parameters
-            if hasattr(request, 'args'):
-                qs = request.args or {}
-                symbol = qs.get("stock") or qs.get("symbol")
-            elif hasattr(request, 'query'):
-                query = request.query or {}
-                if isinstance(query, str):
-                    from urllib.parse import parse_qs
-                    query = parse_qs(query)
-                    symbol = (query.get("stock") or query.get("symbol") or [None])[0]
-                else:
-                    symbol = query.get("stock") or query.get("symbol")
-            elif isinstance(request, dict):
-                query = request.get('query', {}) or {}
-                if isinstance(query, str):
-                    from urllib.parse import parse_qs
-                    query = parse_qs(query)
-                    symbol = (query.get("stock") or query.get("symbol") or [None])[0]
-                else:
-                    symbol = query.get("stock") or query.get("symbol")
+            if isinstance(query, str):
+                from urllib.parse import parse_qs, unquote
+                query_dict = parse_qs(unquote(query))
+                symbol = (query_dict.get("stock") or query_dict.get("symbol") or [None])[0]
+            elif isinstance(query, dict):
+                symbol = query.get("stock") or query.get("symbol")
             else:
                 symbol = None
 
@@ -88,7 +105,16 @@ def handler(request):
                 "body": json.dumps({"error": "Missing 'stock' parameter"})
             }
 
-        result = predict_stock(symbol)
+        # Call the prediction function
+        result = predict_stock(str(symbol))
+        
+        # Check if result contains an error
+        if isinstance(result, dict) and "error" in result:
+            return {
+                "statusCode": 400,
+                "headers": {"Content-Type": "application/json"},
+                "body": json.dumps(result)
+            }
         
         # Ensure all values are JSON serializable
         def make_serializable(obj):
@@ -99,7 +125,10 @@ def handler(request):
             elif isinstance(obj, (int, float, str, bool, type(None))):
                 return obj
             elif hasattr(obj, '__float__'):
-                return float(obj)
+                try:
+                    return float(obj)
+                except (ValueError, TypeError):
+                    return str(obj)
             else:
                 return str(obj)
         
